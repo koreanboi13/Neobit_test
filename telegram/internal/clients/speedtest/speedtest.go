@@ -6,8 +6,7 @@ import (
 	"net/http"
 )
 
-
-const(
+const (
 	SpeedTestMethod = "/speedtest"
 )
 
@@ -23,12 +22,26 @@ func New(addr string) *Client {
 	}
 }
 
-func (c *Client) SpeedTest(chatID int64) (*SpeedTestResult, error) {
-	url := fmt.Sprintf("%s%s?chat_id=%d", c.addr, SpeedTestMethod, chatID)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+func (c *Client) SpeedTest(chatID int64, appID int, appHash, proxy string) (*SpeedTestResult, error) {
+	baseURL := fmt.Sprintf("%s%s", c.addr, SpeedTestMethod)
+	req, err := http.NewRequest(http.MethodGet, baseURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+
+	q := req.URL.Query()
+	q.Add("chat_id", fmt.Sprintf("%d", chatID))
+	if appID == 0 {
+		q.Add("app_id", "")
+	} else {
+		q.Add("app_id", fmt.Sprintf("%d", appID))
+	}
+	q.Add("app_hash", appHash)
+	if proxy != "" {
+		q.Add("proxy", proxy)
+	}
+	q.Add("mb", "10")
+	req.URL.RawQuery = q.Encode()
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -46,4 +59,4 @@ func (c *Client) SpeedTest(chatID int64) (*SpeedTestResult, error) {
 	}
 
 	return &result, nil
-} 
+}

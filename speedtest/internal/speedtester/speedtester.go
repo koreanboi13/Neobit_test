@@ -7,31 +7,25 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"strconv"
+	"net/url"
 	"time"
 
 	"github.com/go-faster/errors"
 	"github.com/gotd/td/telegram"
+	"github.com/gotd/td/telegram/dcs"
 	"github.com/gotd/td/telegram/downloader"
 	"github.com/gotd/td/telegram/uploader"
+	"golang.org/x/net/proxy"
+
 	"github.com/gotd/td/tg"
 )
 
 type Tester struct {
-	appID    int
-	appHash  string
 	botToken string
 }
 
-func New(appID, appHash, botToken string) (*Tester, error) {
-	id, err := strconv.Atoi(appID)
-	if err != nil {
-		return nil, errors.Wrap(err, "неверный APP_ID")
-	}
-
+func New(botToken string) (*Tester, error) {
 	return &Tester{
-		appID:    id,
-		appHash:  appHash,
 		botToken: botToken,
 	}, nil
 }
@@ -42,11 +36,42 @@ func (t *Tester) resolvePeer(chatID int64) tg.InputPeerClass {
 	}
 }
 
-func (t *Tester) Measure(ctx context.Context, fileSizeMB int, chatID int64) (*SpeedTestResult, error) {
+func (t *Tester) Measure(ctx context.Context, appID int, appHash string, proxyAddress string, fileSizeMB int, chatID int64) (*SpeedTestResult, error) {
+	opts := telegram.Options{}
+	if proxyAddress != "" {
+		proxyURL, err := url.Parse(proxyAddress)
+		if err != nil {
+			return nil, errors.Wrap(err, "ошибка парсинга адреса прокси")
+		}
+
+		var auth *proxy.Auth
+		if proxyURL.User != nil {
+			password, _ := proxyURL.User.Password()
+			auth = &proxy.Auth{
+				User:     proxyURL.User.Username(),
+				Password: password,
+			}
+		}
+
+		dialer, err := proxy.SOCKS5("tcp", proxyURL.Host, auth, proxy.Direct)
+		if err != nil {
+			return nil, errors.Wrap(err, "ошибка создания SOCKS5 dialer")
+		}
+
+		dcDialer, ok := dialer.(proxy.ContextDialer)
+		if !ok {
+			return nil, errors.New("dialer не является proxy.ContextDialer")
+		}
+
+		opts.Resolver = dcs.Plain(dcs.PlainOptions{
+			Dial: dcDialer.DialContext,
+		})
+	}
+
 	//создание экземпляра клиента MTProto, для установки соединения с сервером Telegram
 	//appID и appHash - уникальные значения, которые показывают телеграм, что клиент авторизирован
 	//для их получения, необходимо было авторизоваться на my.telegram.org и зарегистрировать приложение
-	client := telegram.NewClient(t.appID, t.appHash, telegram.Options{})
+	client := telegram.NewClient(appID, appHash, opts)
 
 	var result *SpeedTestResult
 	var measureErr error
@@ -54,7 +79,6 @@ func (t *Tester) Measure(ctx context.Context, fileSizeMB int, chatID int64) (*Sp
 	//установка постоянного и зашифрованного соединения клиента с сервером телеграмм
 	//соединение устанавливается только внутри функции
 	if err := client.Run(ctx, func(ctx context.Context) error {
-
 		//аутентификация клиента, который общается по MTProto c сервером телеграмм, как бота
 		if _, err := client.Auth().Bot(ctx, t.botToken); err != nil {
 			return errors.Wrap(err, "ошибка аутентификации бота")

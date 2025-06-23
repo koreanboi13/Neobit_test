@@ -12,14 +12,14 @@ import (
 func main() {
 	cfg := config.MustLoad()
 
-	tester, err := speedtester.New(cfg.AppID, cfg.AppHash, cfg.BotToken)
+	tester, err := speedtester.New(cfg.BotToken)
 	if err != nil {
 		log.Fatalf("Не удалось создать тестер скорости: %s", err)
 	}
 
 	srv := &http.Server{
 		Addr:    cfg.Port,
-		Handler: server.Routes(tester),
+		Handler: server.Routes(tester, cfg),
 	}
 
 	go func() {
