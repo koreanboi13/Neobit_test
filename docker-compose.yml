@@ -1,0 +1,20 @@
+services:
+  speedtest:
+    build:
+      context: ./speedtest
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    env_file:
+      - ./speedtest/.env
+
+  telegram:
+    build:
+      context: ./telegram
+      dockerfile: Dockerfile
+    environment:
+      - SPEEDTEST_HOST=http://speedtest:8081
+    depends_on:
+      - speedtest
+    env_file:
+      - ./telegram/.env 
